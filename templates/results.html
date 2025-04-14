@@ -1,0 +1,330 @@
+{% extends 'layout.html' %}
+
+{% block title %}Tariff Results{% endblock %}
+
+{% block head_extra %}
+<style>
+    .filter-section {
+        background-color: rgba(0, 0, 0, 0.05);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .table-responsive {
+        max-height: 600px;
+    }
+    
+    .bucket-badge {
+        font-size: 85%;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow">
+    <div class="card-header bg-primary bg-gradient text-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">
+                <i class="fas fa-table me-2"></i>
+                Tariff Results
+            </h2>
+            <div>
+                <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm me-2">
+                    <i class="fas fa-home me-1"></i> Home
+                </a>
+                <button id="exportBtn" class="btn btn-success btn-sm">
+                    <i class="fas fa-file-excel me-1"></i> Export to Excel
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="filter-section mb-4">
+            <h4 class="mb-3">Filter Options</h4>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label for="countryFilter" class="form-label">Country</label>
+                    <select class="form-select" id="countryFilter">
+                        <option value="">All Countries</option>
+                        {% for country in countries %}
+                            <option value="{{ country.id }}">{{ country.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="portFilter" class="form-label">Port</label>
+                    <select class="form-select" id="portFilter" disabled>
+                        <option value="">All Ports</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="equipmentFilter" class="form-label">Equipment Type</label>
+                    <select class="form-select" id="equipmentFilter">
+                        <option value="">All Types</option>
+                        <option value="20&quot; Dry">20" Dry</option>
+                        <option value="40&quot; Dry">40" Dry</option>
+                        <option value="40&quot; High Cube">40" High Cube</option>
+                        <option value="20&quot; Reefer">20" Reefer</option>
+                        <option value="40&quot; Reefer">40" Reefer</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button id="applyFilters" class="btn btn-primary w-100">
+                        <i class="fas fa-filter me-1"></i> Apply Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="loadingIndicator" class="text-center my-5 d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading tariff data...</p>
+        </div>
+        
+        <div id="noResultsMessage" class="alert alert-warning d-none">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            No tariff data found matching the selected filters.
+        </div>
+        
+        <div class="table-responsive" id="resultsTable">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th>
+                        <th>Country</th>
+                        <th>Liner</th>
+                        <th>Port</th>
+                        <th>Equipment</th>
+                        <th>Currency</th>
+                        <th>Free Days</th>
+                        <th>Bucket 1</th>
+                        <th>Bucket 2</th>
+                        <th>Bucket 3</th>
+                        <th>Valid From</th>
+                        <th>Valid To</th>
+                    </tr>
+                </thead>
+                <tbody id="tariffTableBody">
+                    <!-- Data will be populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="tariffDetailModal" tabindex="-1" aria-labelledby="tariffDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="tariffDetailModalLabel">Tariff Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="tariffDetailContent">
+                <!-- Modal content will be populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const countryFilter = document.getElementById('countryFilter');
+        const portFilter = document.getElementById('portFilter');
+        const equipmentFilter = document.getElementById('equipmentFilter');
+        const applyFiltersBtn = document.getElementById('applyFilters');
+        const exportBtn = document.getElementById('exportBtn');
+        const tariffTableBody = document.getElementById('tariffTableBody');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const noResultsMessage = document.getElementById('noResultsMessage');
+        const resultsTable = document.getElementById('resultsTable');
+        
+        // Modal elements
+        const tariffDetailModal = new bootstrap.Modal(document.getElementById('tariffDetailModal'));
+        const tariffDetailContent = document.getElementById('tariffDetailContent');
+        
+        // Load initial data
+        loadTariffData();
+        
+        // Update ports when country changes
+        countryFilter.addEventListener('change', function() {
+            const countryId = this.value;
+            
+            if (countryId) {
+                // Enable port filter and load ports for selected country
+                portFilter.disabled = false;
+                
+                // Clear existing options except the first one
+                while (portFilter.options.length > 1) {
+                    portFilter.options.remove(1);
+                }
+                
+                // Show loading
+                portFilter.innerHTML = '<option value="">Loading ports...</option>';
+                
+                // Fetch ports for selected country
+                fetch(`/api/ports?country_id=${countryId}`)
+                    .then(response => response.json())
+                    .then(ports => {
+                        // Reset port filter
+                        portFilter.innerHTML = '<option value="">All Ports</option>';
+                        
+                        // Add port options
+                        ports.forEach(port => {
+                            const option = document.createElement('option');
+                            option.value = port.name;
+                            option.textContent = port.name;
+                            portFilter.appendChild(option);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error loading ports:', error);
+                        portFilter.innerHTML = '<option value="">Error loading ports</option>';
+                    });
+            } else {
+                // Disable port filter if no country selected
+                portFilter.disabled = true;
+                portFilter.innerHTML = '<option value="">All Ports</option>';
+            }
+        });
+        
+        // Apply filters button click
+        applyFiltersBtn.addEventListener('click', function() {
+            loadTariffData();
+        });
+        
+        // Export button click
+        exportBtn.addEventListener('click', function() {
+            // Implement export functionality
+            alert('Export functionality would download an Excel file with the current filtered data.');
+        });
+        
+        // Function to load tariff data with filters
+        function loadTariffData() {
+            // Show loading indicator
+            loadingIndicator.classList.remove('d-none');
+            resultsTable.classList.add('d-none');
+            noResultsMessage.classList.add('d-none');
+            
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (countryFilter.value) params.append('country_id', countryFilter.value);
+            if (portFilter.value) params.append('port_name', portFilter.value);
+            if (equipmentFilter.value) params.append('equipment_type', equipmentFilter.value);
+            
+            // Fetch data
+            fetch(`/api/tariffs?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading indicator
+                    loadingIndicator.classList.add('d-none');
+                    
+                    if (data.length === 0) {
+                        // Show no results message
+                        noResultsMessage.classList.remove('d-none');
+                        resultsTable.classList.add('d-none');
+                    } else {
+                        // Show results table
+                        resultsTable.classList.remove('d-none');
+                        noResultsMessage.classList.add('d-none');
+                        
+                        // Clear existing table rows
+                        tariffTableBody.innerHTML = '';
+                        
+                        // Populate table with data
+                        data.forEach((tariff, index) => {
+                            const row = document.createElement('tr');
+                            row.classList.add('tariff-row');
+                            row.dataset.tariffId = tariff.id;
+                            
+                            // Format buckets
+                            const buckets = {};
+                            tariff.buckets.forEach(bucket => {
+                                buckets[bucket.bucket_number] = `${bucket.rate} ${tariff.currency} (${bucket.start_day}-${bucket.end_day} days)`;
+                            });
+                            
+                            row.innerHTML = `
+                                <td>${index + 1}</td>
+                                <td>${tariff.country}</td>
+                                <td>${tariff.liner_name}</td>
+                                <td>${tariff.port_name}</td>
+                                <td>${tariff.equipment_type}</td>
+                                <td>${tariff.currency}</td>
+                                <td>${tariff.free_days || 'N/A'}</td>
+                                <td>${buckets[1] || 'N/A'}</td>
+                                <td>${buckets[2] || 'N/A'}</td>
+                                <td>${buckets[3] || 'N/A'}</td>
+                                <td>${tariff.valid_from || 'N/A'}</td>
+                                <td>${tariff.valid_to || 'N/A'}</td>
+                            `;
+                            
+                            // Add click event to show details
+                            row.addEventListener('click', () => showTariffDetails(tariff));
+                            
+                            tariffTableBody.appendChild(row);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading tariff data:', error);
+                    loadingIndicator.classList.add('d-none');
+                    noResultsMessage.textContent = 'Error loading tariff data. Please try again.';
+                    noResultsMessage.classList.remove('d-none');
+                    resultsTable.classList.add('d-none');
+                });
+        }
+        
+        // Function to show tariff details in modal
+        function showTariffDetails(tariff) {
+            // Format buckets for display
+            const bucketsHtml = tariff.buckets.map(bucket => `
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-header bg-info text-white">
+                            <h6 class="mb-0">Bucket ${bucket.bucket_number}</h6>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-1"><strong>Days:</strong> ${bucket.start_day} to ${bucket.end_day}</p>
+                            <p class="mb-0"><strong>Rate:</strong> ${bucket.rate} ${tariff.currency}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Populate modal content
+            tariffDetailContent.innerHTML = `
+                <div class="mb-4">
+                    <h4>${tariff.port_name}, ${tariff.country}</h4>
+                    <p class="text-muted">${tariff.equipment_type} - ${tariff.liner_name}</p>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <p><strong>Currency:</strong> ${tariff.currency}</p>
+                        <p><strong>Free Days:</strong> ${tariff.free_days || 'N/A'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Valid From:</strong> ${tariff.valid_from || 'N/A'}</p>
+                        <p><strong>Valid To:</strong> ${tariff.valid_to || 'N/A'}</p>
+                    </div>
+                </div>
+                
+                <h5 class="mb-3">Rate Buckets</h5>
+                <div class="row">
+                    ${bucketsHtml}
+                </div>
+            `;
+            
+            // Show modal
+            tariffDetailModal.show();
+        }
+    });
+</script>
+{% endblock %}

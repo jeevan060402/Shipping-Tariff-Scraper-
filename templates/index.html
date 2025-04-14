@@ -1,0 +1,121 @@
+{% extends 'layout.html' %}
+
+{% block title %}Shipping Tariff Scraper - Home{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card shadow">
+            <div class="card-header bg-primary bg-gradient text-white">
+                <h2 class="mb-0">
+                    <i class="fas fa-ship me-2"></i>
+                    Shipping Tariff Scraper
+                </h2>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    This tool scrapes detention and demurrage tariffs from the Hapag-Lloyd website. You can select all regions or a specific region to scrape.
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4 class="mb-4 mt-4">Start Scraping</h4>
+                        
+                        <form action="{{ url_for('scrape') }}" method="post" id="scrapeForm">
+                            <div class="mb-3">
+                                <label for="region" class="form-label fw-bold">Select Region to Scrape</label>
+                                <select class="form-select" id="region" name="region" required>
+                                    <option value="all">All Regions</option>
+                                    {% for region in regions %}
+                                        <option value="{{ region.id }}">{{ region.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="mt-4">
+                                <button type="submit" class="btn btn-primary" id="scrapeBtn">
+                                    <i class="fas fa-download me-2"></i>
+                                    Start Scraping
+                                </button>
+                                <div class="form-text mt-2">
+                                    <i class="fas fa-clock me-1"></i>
+                                    This process may take several minutes depending on the selected region(s).
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h4 class="mb-4 mt-4">Manual PDF Upload</h4>
+                        <p>If web scraping is blocked or you have tariff PDFs already downloaded, you can manually upload them:</p>
+                        <a href="{{ url_for('upload_pdf') }}" class="btn btn-success">
+                            <i class="fas fa-file-upload me-2"></i>
+                            Upload PDF
+                        </a>
+                        <div class="form-text mt-2">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Upload PDFs containing detention and demurrage tariff information for processing.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card shadow mt-4">
+            <div class="card-header bg-secondary bg-gradient text-white">
+                <h3 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    About
+                </h3>
+            </div>
+            <div class="card-body">
+                <p>This tool is designed to help users easily gather detention and demurrage tariff information from the Hapag-Lloyd shipping line. It performs the following tasks:</p>
+                
+                <ol class="mb-4">
+                    <li>Scrapes the Hapag-Lloyd website to identify available regions and countries</li>
+                    <li>Downloads tariff PDF documents for each country</li>
+                    <li>Processes the PDFs to extract structured tariff data</li>
+                    <li>Stores the information in a database for easy access and analysis</li>
+                    <li>Provides a manual PDF upload feature when web scraping is blocked or for offline documents</li>
+                    <li>Generates realistic shipping industry test data when live data cannot be accessed</li>
+                </ol>
+                
+                <h5 class="text-primary mb-3">Extracted Information</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <ul>
+                            <li>Country and region information</li>
+                            <li>Port names within each country</li>
+                            <li>Equipment types (20" Dry, 40" High Cube, etc.)</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul>
+                            <li>Currency used for tariffs</li>
+                            <li>Free days allowed</li>
+                            <li>Rate buckets with day ranges and amounts</li>
+                            <li>Validity periods for the tariffs</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const scrapeForm = document.getElementById('scrapeForm');
+        const scrapeBtn = document.getElementById('scrapeBtn');
+        
+        scrapeForm.addEventListener('submit', function(e) {
+            // Disable button and change text
+            scrapeBtn.disabled = true;
+            scrapeBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Scraping in progress...';
+        });
+    });
+</script>
+{% endblock %}
